@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: mongo
+    restart: unless-stopped
+    ports: ["27017:27017"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    volumes:
+      - mongo_data:/data/db
+    networks: [payment_net]
+
+  client-service:
+    build:
+      context: ../client-service
+      dockerfile: Dockerfile
+    image: client-service:latest
+    container_name: client-service
+    depends_on: [mongo]
+    restart: unless-stopped
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://root:rootpassword@mongo:27017/clients_db?authSource=admin
+    ports: ["8081:8081"]
+    networks: [payment_net]
+
+  recipient-service:
+    build:
+      context: ../recipient-service
+      dockerfile: Dockerfile
+    image: recipient-service:latest
+    container_name: recipient-service
+    depends_on: [mongo]
+    restart: unless-stopped
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://root:rootpassword@mongo:27017/recipients_db?authSource=admin
+    ports: ["8082:8082"]
+    networks: [payment_net]
+
+  product-service:
+    build:
+      context: ../product-service
+      dockerfile: Dockerfile
+    image: product-service:latest
+    container_name: product-service
+    depends_on: [mongo]
+    restart: unless-stopped
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://root:rootpassword@mongo:27017/products_db?authSource=admin
+    ports: ["8083:8083"]
+    networks: [payment_net]
+
+  payment-service:
+    build:
+      context: ../payment-service
+      dockerfile: Dockerfile
+    image: payment-service:latest
+    container_name: payment-service
+    depends_on:
+      - mongo
+      - rabbitmq
+      - client-service
+      - recipient-service
+      - product-service
+    restart: unless-stopped
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://root:rootpassword@mongo:27017/payments_db?authSource=admin
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=user
+      - SPRING_RABBITMQ_PASSWORD=pass
+    ports: ["8084:8084"]
+    networks: [payment_net]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"    # Broker AMQP
+      - "15672:15672"  # UI: http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: pass
+    networks: [payment_net]
+
+volumes:
+  mongo_data:
+
+networks:
+  payment_net:
+    driver: bridge
